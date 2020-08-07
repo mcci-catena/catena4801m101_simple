@@ -61,7 +61,7 @@ On Windows, we strongly recommend use of "git bash", available from [git-scm.org
 
 The goal of this process is to create a directory called `{somewhere}/Catena-Sketches`. You get to choose `{somewhere}`. Everyone has their own convention; the author typically has a directory in his home directory called `sandbox`, and then puts projects there.
 
-Once you have a suitable command line open, you can enter the following commands. In the following, change `{somewhere}` to the directory path where you want to put `catena4801M101_simple`.
+Once you have a suitable command line open, you can enter the following commands. In the following, change `{somewhere}` to the directory path where you want to put `catena4801m101_simple`.
 
 ```console
 $ cd {somewhere}
@@ -171,4 +171,4 @@ Because the 4801 M101 is essentially identical to the 4801 other than sensors, y
 
 ### Data Format
 
-Refer to the [Protocol Description](../extra/catena-message-port3-format.md) in the `extras` directory for information on how data is encoded.
+Refer to the [Protocol Description](extra/catena-message-port4-format.md) in the `extras` directory for information on how data is encoded.
