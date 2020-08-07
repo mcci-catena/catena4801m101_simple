@@ -91,7 +91,7 @@ Then go to `Tools>Board:...` and scroll to the bottom. You should see `MCCI Cate
 
 When you select a board, the default LoRaWAN region is set to US-915, which is used in North America and much of South America. If you're elsewhere, you need to select your target region. You can do it in the IDE:
 
-![Select Bandplan](../extra/assets/select-band-plan.gif)
+![Select Band Plan](extra/assets/select-band-plan.gif)
 
 As the animation shows, use `Tools>LoRaWAN Region...` and choose the appropriate entry from the menu.
 
