@@ -1,0 +1,16 @@
+Vbat 1.5 .
+Vsys -.5 .
+Boot 42 .
+Env 20 60 .
+Env 26.5 52.7 .
+Modbus [ ] .
+Modbus [ 256 ] .
+Modbus [ 256 512 768 ] .
+
+Vbat 1.5
+Vsys -.5
+Boot 42
+Env 20 60
+Env 26.5 52.7
+Modbus [ 256 512 768 ]
+.
