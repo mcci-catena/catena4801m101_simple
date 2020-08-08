@@ -1,29 +1,22 @@
 # catena4801m101_simple
+
 Demo of Catena 4801m101, which is a Catena 4801 with Adafruit SHT31 breakout board, set up for development.
+
+<!-- TOC depthFrom:2 updateOnSave:true -->
 
 - [Introduction](#introduction)
 - [Getting Started](#getting-started)
-    - [Clone this repository into a suitable directory on your system](#clone-this-repository-into-a-suitable-directory-on-your-system)
-    - [Install the MCCI STM32 board support library](#install-the-mcci-stm32-board-support-library)
-    - [Select your desired band](#select-your-desired-band)
-    - [Installing the required libraries](#installing-the-required-libraries)
-        - [List of required libraries](#list-of-required-libraries)
-    - [Build and Download](#build-and-download)
-    - [Load the sketch into the Catena](#load-the-sketch-into-the-catena)
-- [Set the identity of your Catena 4801](#set-the-identity-of-your-catena-4801)
-    - [Check platform and serial number setup](#check-platform-and-serial-number-setup)
-    - [Platform Provisioning](#platform-provisioning)
-- [LoRaWAN Provisioning](#lorawan-provisioning)
-    - [Preparing the network for your device](#preparing-the-network-for-your-device)
-    - [Preparing your device for the network](#preparing-your-device-for-the-network)
-    - [Changing registration](#changing-registration)
-    - [Starting Over](#starting-over)
+	- [Clone this repository into a suitable directory on your system](#clone-this-repository-into-a-suitable-directory-on-your-system)
+	- [Install the MCCI STM32 board support library](#install-the-mcci-stm32-board-support-library)
+	- [Select your desired band](#select-your-desired-band)
+	- [Installing the required libraries](#installing-the-required-libraries)
+		- [List of required libraries](#list-of-required-libraries)
+	- [Build and Download](#build-and-download)
+	- [Load the sketch into the Catena](#load-the-sketch-into-the-catena)
+- [If needed, set the identity of your Catena 4801](#if-needed-set-the-identity-of-your-catena-4801)
 - [Notes](#notes)
-    - [Setting up DFU on a Linux or Windows PC](#setting-up-dfu-on-a-linux-or-windows-pc)
-    - [Data Format](#data-format)
-    - [Unplugging the USB Cable while running on batteries](#unplugging-the-usb-cable-while-running-on-batteries)
-    - [Deep sleep and USB](#deep-sleep-and-usb)
-    - [gitboot.sh and the other sketches](#gitbootsh-and-the-other-sketches)
+	- [Downloading images](#downloading-images)
+	- [Data Format](#data-format)
 
 <!-- /TOC -->
 ## Introduction
