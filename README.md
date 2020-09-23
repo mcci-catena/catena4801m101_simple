@@ -16,6 +16,7 @@ Demo of Catena 4801m101, which is a Catena 4801 with Adafruit SHT31 breakout boa
 - [If needed, set the identity of your Catena 4801](#if-needed-set-the-identity-of-your-catena-4801)
 - [Notes](#notes)
 	- [Downloading images](#downloading-images)
+	- [Downlink Data Format](#downlink-data-format)
 	- [Data Format](#data-format)
 
 <!-- /TOC -->
@@ -161,6 +162,26 @@ We did this at MCCI. But if you need to do it again, contact us for assistance.
 An STLINK-V2 is used to download code to the 4801 M101. We attached posts, for easy use with the MCCI debug starter kit.
 
 Because the 4801 M101 is essentially identical to the 4801 other than sensors, you may also refer to the detailed procedures that are part of the Catena 4801 user manual. 
+
+### Downlink data Format
+
+Data received via 'port 1' is used to change the Time interval (first two bytes) and TxCount (third byte).
+
+Example: 00 F0 0A
+	
+	Time interval - 240
+	TxCount - 10
+Bytes | Length of corresponding field (bytes) | Description
+:---:|:---:|:----
+00 F0 | 2 | Time interval
+0A | 1 | TxCount
+
+Downlink data received via 'port 2' is used to control the 'GPIO pins A1', here only one byte is used for current application to enable/disable GPIO pin A1. Also can be extended to other features by using remaining 7 bits of the byte.
+
+Byte values | Operation performed
+:---:|:---
+00 | Turns OFF GPIO pin A1
+01 | Turns ON GPIO pin A1
 
 ### Data Format
 
