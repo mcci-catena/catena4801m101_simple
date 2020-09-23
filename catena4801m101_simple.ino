@@ -64,34 +64,40 @@ FlagsFormat operator|= (FlagsFormat &lhs, const FlagsFormat &rhs)
         };
 
 
-
-/* how long do we wait between transmissions? (in seconds) */
-enum	{
-	// set this to interval between transmissions, in seconds
-	// Actual time will be a little longer because have to
-	// add measurement and broadcast time, but we attempt
-	// to compensate for the gross effects below.
-	CATCFG_T_CYCLE = 30,			// every 30 Sec
-	};
+/* adjustable timing parameters */
+enum    {
+        // set this to interval between transmissions, in seconds
+        // Actual time will be a little longer because have to
+        // add measurement and broadcast time, but we attempt
+        // to compensate for the gross effects below.
+        CATCFG_T_CYCLE = 1 * 60,        // every 6 minutes
+        CATCFG_T_CYCLE_TEST = 30,       // every 30 seconds
+        CATCFG_T_CYCLE_INITIAL = 30,    // every 30 seconds initially
+        CATCFG_INTERVAL_COUNT_INITIAL = 10,     // repeat for 5 minutes
+        CATCFG_T_REBOOT = 30 * 24 * 60 * 60,    // reboot every 30 days
+        };
 
 /* additional timing parameters; ususually you don't change these. */
-enum	{
-	CATCFG_T_WARMUP = 1,
-	CATCFG_T_SETTLE = 5,
-	CATCFG_T_OVERHEAD = (CATCFG_T_WARMUP + CATCFG_T_SETTLE),
-	};
+enum    {
+        CATCFG_T_WARMUP = 1,
+        CATCFG_T_SETTLE = 5,
+        CATCFG_T_OVERHEAD = (CATCFG_T_WARMUP + CATCFG_T_SETTLE + 4),
+        CATCFG_T_MIN = CATCFG_T_OVERHEAD,
+        CATCFG_T_MAX = CATCFG_T_CYCLE < 60 * 60 ? 60 * 60 : CATCFG_T_CYCLE,     // normally one hour max.
+        CATCFG_INTERVAL_COUNT = 30,
+        };
 
 constexpr uint32_t CATCFG_GetInterval(uint32_t tCycle)
-	{
-	return (tCycle < CATCFG_T_OVERHEAD)
-		? CATCFG_T_OVERHEAD
-		: tCycle - CATCFG_T_OVERHEAD
-		;
-	}
+        {
+        return (tCycle < CATCFG_T_OVERHEAD + 1)
+                ? 1
+                : tCycle - CATCFG_T_OVERHEAD
+                ;
+        }
 
-enum	{
-	CATCFG_T_INTERVAL = CATCFG_GetInterval(CATCFG_T_CYCLE),
-	};
+enum    {
+        CATCFG_T_INTERVAL = CATCFG_GetInterval(CATCFG_T_CYCLE),
+        };
 
 // forwards
 void settleDoneCb(osjob_t *pSendJob);
@@ -99,8 +105,7 @@ void warmupDoneCb(osjob_t *pSendJob);
 void txFailedDoneCb(osjob_t *pSendJob);
 void sleepDoneCb(osjob_t *pSendJob);
 Arduino_LoRaWAN::SendBufferCbFn sendBufferDoneCb;
-void prepareToSleep();
-void recoverFromSleep();
+static Arduino_LoRaWAN::ReceivePortBufferCbFn receiveMessage;
 
 /****************************************************************************\
 |
@@ -151,6 +156,14 @@ bool fFoundTempRh;
 static osjob_t sensorJob;
 void sensorJob_cb(osjob_t *pJob);
 
+// have we printed the sleep info?
+bool g_fPrintedSleeping = false;
+
+// the cycle time to use
+unsigned gTxCycle;
+// remaining before we reset to default
+unsigned gTxCycleCount;
+
 // data array for modbus network sharing
 uint16_t au16data[18];	//Size of array changed based on no. of coils
 uint8_t u8state;
@@ -179,6 +192,7 @@ ModbusSerial<decltype(Serial2)> mySerial(&Serial2);
 #define kPowerOn		D11
 #define kFRAMPowerOn		D10
 #define kBoostPowerOn		D5
+#define kAnalogPin1    	A1
 
 static inline void powerOn(void)
 	{
@@ -395,6 +409,9 @@ void setup_platform(void)
 		gCatena.SafePrintf("OK\n");
 		gCatena.registerObject(&gLoRaWAN);
 		}
+
+    gLoRaWAN.SetReceiveBufferBufferCb(receiveMessage);
+    setTxCycleTime(CATCFG_T_CYCLE_INITIAL, CATCFG_INTERVAL_COUNT_INITIAL);
 
 	Catena::UniqueID_string_t CpuIDstring;
 
@@ -730,22 +747,157 @@ static void txNotProvisionedCb(
         gLed.Set(LedPattern::NotProvisioned);
         }
 
-void settleDoneCb(
+static void settleDoneCb(
 	osjob_t *pSendJob
 	)
 	{
-	/* we are allowed to do a deep sleep */
-	gLed.Set(LedPattern::Off);
-	prepareToSleep();
-	
-	gCatena.Sleep(CATCFG_T_INTERVAL);
+	const bool fDeepSleep = checkDeepSleep();
 
-	/* now we're allowed for a awake again and trigger another measurement */
-	recoverFromSleep();
-	sleepDoneCb(pSendJob);
+	if (! g_fPrintedSleeping)
+		doSleepAlert(fDeepSleep);
+
+	/* count what we're up to */
+	updateSleepCounters();
+
+	if (fDeepSleep)
+		doDeepSleep(pSendJob);
+	else
+		doLightSleep(pSendJob);
 	}
 
-void prepareToSleep()
+bool checkDeepSleep(void)
+	{
+	bool const fDeepSleepTest = gCatena.GetOperatingFlags() &
+	static_cast<uint32_t>(gCatena.OPERATING_FLAGS::fDeepSleepTest);
+	bool fDeepSleep;
+
+	if (fDeepSleepTest)
+		{
+		fDeepSleep = true;
+		}
+	else if (gCatena.GetOperatingFlags() &
+	static_cast<uint32_t>(gCatena.OPERATING_FLAGS::fDisableDeepSleep))
+		{
+		fDeepSleep = false;
+		}
+	else if ((gCatena.GetOperatingFlags() &
+	static_cast<uint32_t>(gCatena.OPERATING_FLAGS::fUnattended)) != 0)
+		{
+		fDeepSleep = true;
+		}
+	else
+		{
+		fDeepSleep = false;
+		}
+
+	return fDeepSleep;
+	}
+
+void doSleepAlert(const bool fDeepSleep)
+	{
+	g_fPrintedSleeping = true;
+
+	if (fDeepSleep)
+		{
+		bool const fDeepSleepTest = gCatena.GetOperatingFlags() &
+		static_cast<uint32_t>(gCatena.OPERATING_FLAGS::fDeepSleepTest);
+		const uint32_t deepSleepDelay = fDeepSleepTest ? 10 : 30;
+
+		gCatena.SafePrintf("using deep sleep in %u secs",
+				deepSleepDelay
+				);
+
+		// sleep and print
+		gLed.Set(LedPattern::TwoShort);
+
+		for (auto n = deepSleepDelay; n > 0; --n)
+			{
+			uint32_t tNow = millis();
+
+			while (uint32_t(millis() - tNow) < 1000)
+				{
+				gCatena.poll();
+				yield();
+				}
+			gCatena.SafePrintf(".");
+			}
+		gCatena.SafePrintf("\nStarting deep sleep.\n");
+		uint32_t tNow = millis();
+		while (uint32_t(millis() - tNow) < 100)
+			{
+			gCatena.poll();
+			yield();
+			}
+		}
+	else
+		gCatena.SafePrintf("using light sleep\n");
+	}
+
+void updateSleepCounters(void)
+	{
+	// update the sleep parameters
+	if (gTxCycleCount > 1)
+		{
+		// values greater than one are decremented and ultimately reset to default.
+		--gTxCycleCount;
+		}
+	else if (gTxCycleCount == 1)
+		{
+		// it's now one (otherwise we couldn't be here.)
+		gCatena.SafePrintf("resetting tx cycle to default: %u\n", CATCFG_T_CYCLE);
+
+		gTxCycleCount = 0;
+		gTxCycle = CATCFG_T_CYCLE;
+		}
+	else
+		{
+		// it's zero. Leave it alone.
+		}
+	}
+
+void doDeepSleep(osjob_t *pJob)
+	{
+	bool const fDeepSleepTest = gCatena.GetOperatingFlags() &
+	static_cast<uint32_t>(gCatena.OPERATING_FLAGS::fDeepSleepTest);
+	uint32_t const sleepInterval = CATCFG_GetInterval(
+			fDeepSleepTest ? CATCFG_T_CYCLE_TEST : gTxCycle
+			);
+
+	/* ok... now it's time for a deep sleep */
+	gLed.Set(LedPattern::Off);
+	deepSleepPrepare();
+
+	/* sleep */
+	gCatena.Sleep(sleepInterval);
+
+	/* recover from sleep */
+	deepSleepRecovery();
+
+	/* and now... we're awake again. trigger another measurement */
+	sleepDoneCb(pJob);
+	}
+
+void doLightSleep(osjob_t *pJob)
+	{
+	uint32_t interval = sec2osticks(CATCFG_GetInterval(gTxCycle));
+
+	gLed.Set(LedPattern::Sleeping);
+
+	if (gCatena.GetOperatingFlags() &
+	static_cast<uint32_t>(gCatena.OPERATING_FLAGS::fQuickLightSleep))
+		{
+		interval = 1;
+		}
+
+	gLed.Set(LedPattern::Sleeping);
+	os_setTimedCallback(
+		&sensorJob,
+		os_getTime() + interval,
+		sleepDoneCb
+		);
+	}
+
+void deepSleepPrepare()
 	{
 	Serial.end();
 	Wire.end();
@@ -759,7 +911,7 @@ void prepareToSleep()
 	boostpowerOff();
 	}
 
-void recoverFromSleep()
+void deepSleepRecovery()
 	{
 	FRAMpowerOn();	// FRAM/Flash PowerOn, specific to 4801.
 	powerOn();	// turn on the transceiver, specific to 4801.
@@ -790,4 +942,92 @@ void warmupDoneCb(
 	)
 	{
 	startSendingUplink();
+	}
+
+static void receiveMessage(
+	void *pContext,
+	uint8_t port,
+	const uint8_t *pMessage,
+	size_t nMessage
+	)
+	{
+	unsigned txCycle;
+	unsigned txCount;
+	unsigned controlGpio;
+
+	if (port == 0)
+		{
+		gCatena.SafePrintf("MAC message:");
+		for (unsigned i = 0; i < LMIC.dataBeg; ++i)
+			{
+			gCatena.SafePrintf(" %02x", LMIC.frame[i]);
+			}
+		gCatena.SafePrintf("\n");
+		return;
+		}
+
+	else if (port == 2)
+		{
+		controlGpio = pMessage[0];
+
+		if (controlGpio && 0x01)
+			{
+			gCatena.SafePrintf("GPIO turned ON\n");
+			pinMode(kAnalogPin1, OUTPUT);
+			digitalWrite(kAnalogPin1, HIGH);
+			}
+
+		else
+			{
+			gCatena.SafePrintf("GPIO turned OFF\n");
+			pinMode(kAnalogPin1, INPUT);
+			}
+		return;
+		}
+
+	else if (! (port == 1 && 2 <= nMessage && nMessage <= 4))
+		{
+		gCatena.SafePrintf("invalid message port(%02x)/length(%x)\n",
+			port, nMessage
+			);
+		return;
+		}
+
+	txCycle = (pMessage[0] << 8) | pMessage[1];
+
+	if (txCycle < CATCFG_T_MIN || txCycle > CATCFG_T_MAX)
+		{
+		gCatena.SafePrintf("tx cycle time out of range: %u\n", txCycle);
+		return;
+		}
+
+	// byte [2], if present, is the repeat count.
+	// explicitly sending zero causes it to stick.
+	txCount = CATCFG_INTERVAL_COUNT;
+	if (nMessage >= 3)
+		{
+		txCount = pMessage[2];
+		}
+
+	setTxCycleTime(txCycle, txCount);
+	}
+
+void setTxCycleTime(
+unsigned txCycle,
+unsigned txCount
+)
+	{
+	if (txCount > 0)
+		gCatena.SafePrintf(
+			"message cycle time %u seconds for %u messages\n",
+			txCycle, txCount
+			);
+	else
+		gCatena.SafePrintf(
+			"message cycle time %u seconds indefinitely\n",
+			txCycle
+			);
+
+	gTxCycle = txCycle;
+	gTxCycleCount = txCount;
 	}
